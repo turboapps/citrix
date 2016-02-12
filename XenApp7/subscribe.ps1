@@ -5,7 +5,7 @@
 
 .SYNOPSIS
 
-Subscribes a XenApp server to the specified user, org, or channel and adds the subscribed applications to the specified delivery group.
+Subscribes a XenApp server to the specified channel and adds the applications to the specified delivery group.
 
 .DESCRIPTION
 
@@ -15,9 +15,9 @@ Can install the client manually by downloading from http://start.turbo.net/insta
 
 Requires XenApp 7.*.
 
-.PARAMETER subscription
+.PARAMETER channel
 
-The name of the user, org, or channel to subscribe to.
+The name of the channel to subscribe to.
 
 .PARAMETER deliveryGroup
 
@@ -29,7 +29,7 @@ The name of a remote XenApp server.
 
 .PARAMETER user
 
-The Turbo.net user with access to the subscription. If not specified then will be prompted if necessary.
+The Turbo.net user with access to the channel. If not specified then will be prompted if necessary.
 
 .PARAMETER password
 
@@ -41,13 +41,13 @@ The password for the Turbo.net user. If not specified then will be prompted if n
 [CmdletBinding()]
 param
 (
-    [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the user, org, or channel to subscribe to")]
-    [string] $subscription,
+    [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the channel to subscribe to")]
+    [string] $channel,
     [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the XenApp delivery group to add the applications to")]
     [string] $deliveryGroup,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of a remote XenApp server")]
     [string] $server,
-    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net user with access to the subscription")]
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net user with access to the channel")]
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo.net user")]
     [string] $password
@@ -212,7 +212,7 @@ if(-not $turbo) {
     exit -1;
 }
 
-Write-Output "Subscribe to $subscription..."
+Write-Output "Subscribe to $channel..."
 
 # login if necessary
 if(-not $(LoginIf $user $password $turbo $server)) {
@@ -221,6 +221,6 @@ if(-not $(LoginIf $user $password $turbo $server)) {
 }
    
 # subscribe
-Subscribe $subscription $deliveryGroup $turbo $server
+Subscribe $channel $deliveryGroup $turbo $server
 
 Write-Output "Subscription complete"
