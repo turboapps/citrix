@@ -60,7 +60,8 @@ function InstallTurboIf([string]$server = "") {
     }
     else {
         # check if the client is installed for all users
-        $turboInstallFiles = ($(Join-Path $env:ProgramFiles "spoon\cmd\turbo.exe"), $(Join-Path ${env:ProgramFiles(x86)} "spoon\cmd\turbo.exe"))
+        $relPath = "spoon\cmd\turbo.exe"
+        $turboInstallFiles = ("$env:ProgramFiles\$relPath", "${env:ProgramFiles(x86)}\$relPath")
         foreach($turbo in $turboInstallFiles) {
             if($(Test-Path $turbo)) {
                 return $turbo
