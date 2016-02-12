@@ -41,10 +41,10 @@ The password for the Turbo.net user. If not specified then will be prompted if n
 [CmdletBinding()]
 param
 (
-	[Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the user, org, or channel to subscribe to")]
-	[string] $subscription,
-	[Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the XenApp delivery group to add the applications to")]
-	[string] $deliveryGroup,
+    [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the user, org, or channel to subscribe to")]
+    [string] $subscription,
+    [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the XenApp delivery group to add the applications to")]
+    [string] $deliveryGroup,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of a remote XenApp server")]
     [string] $server,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net user with access to the subscription")]
