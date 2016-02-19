@@ -13,7 +13,7 @@ This cmdlet will automatically download and install the Turbo client if it isn't
 
 Can install the client manually by downloading from http://start.turbo.net/install and running "turbo-plugin.exe --all-users --silent" as admin.
 
-Requires XenApp 6.5.
+Requires XenApp 6.5. Requires Turbo.net Client 3.33.935+.
 
 .PARAMETER channel
 
@@ -185,13 +185,13 @@ function Subscribe([string]$subscription, [string[]]$users, [string]$turbo, [str
             $app = Get-XAApplication -BrowserName $xaName -ErrorAction SilentlyContinue
             if(-not $app) {
                 # add the app
-                #$ctxIcon = Get-CtxIcon $icon[0] -Index $icon[1] 
+                $ctxIcon = Get-CtxIcon $icon[0] -Index $icon[1] 
                 $app = New-XAApplication $xaName `
                     -ApplicationType ServerInstalled `
                     -CommandLineExecutable "`"$target`" $params" `
                     -ServerNames ($env:COMPUTERNAME) `
-                    -Accounts $users 
-                    #-EncodedIconData $ctxIcon.EncodedIconData # current icons not compatible because the sdk doesn't like icons larger than 48x48. this will be fixed in next client release. see https://discussions.citrix.com/topic/316880-new-xaapplication-attempting-to-marshall-null-object-not-supported-by-ima/
+                    -Accounts $users `
+                    -EncodedIconData $ctxIcon.EncodedIconData 
 
                 if($app) {
                     Write-Output "$xaName added"
