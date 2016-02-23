@@ -37,7 +37,11 @@ The password for the Turbo.net user. If not specified then will be prompted if n
 
 .PARAMETER cacheApps
 
-Whether the applications in the channel are to be cached locally. This could be a long operation.
+The applications in the channel are to be cached locally. This could be a long operation.
+
+.PARAMETER skipPublish
+
+The applications in the channel are not to be published to the XenApp server.
 
 #>
 
@@ -55,8 +59,10 @@ param
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo.net user")]
     [string] $password,
-    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Whether the applications in the channel are to be cached locally")]
-    [switch] $cacheApps
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are to be cached locally")]
+    [switch] $cacheApps,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are not to be published to the XenApp server")]
+    [switch] $skipPublish
 )
 
 # returns the path to turbo.exe or empty string if the client is not installed
@@ -152,11 +158,17 @@ function LoginIf([string]$user, [string]$password, [string]$turbo, [string]$serv
     }
 }
 
-function Subscribe([string]$subscription, [string[]]$users, [bool]$cacheApps, [string]$turbo, [string]$server = "") {
+function Subscribe(
+    [string]$subscription, 
+    [string[]]$users, 
+    [bool]$cacheApps, 
+    [bool]$skipPublish, 
+    [string]$turbo, 
+    [string]$server = "") {
     
     if($server) {
         Invoke-Command -ComputerName $server `
-            -ArgumentList $subscription, $users, $cacheApps, $turbo `
+            -ArgumentList $subscription, $users, $cacheApps, $skipPublish, $turbo `
             -ScriptBlock ${function:Subscribe}
     }
     else {
@@ -167,39 +179,47 @@ function Subscribe([string]$subscription, [string[]]$users, [bool]$cacheApps, [s
             $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Output $_.message }
             return
         }
-    
-        # publish apps
-        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
-
-        $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
-        $shell = New-Object -ComObject WScript.Shell
+        
+        # show which apps were subscribe to
         foreach ($event in $installEvents) {
             $name = $event.name
+            Write-Output "$name subscribed"
+        }
     
-            # get values out of the shortcuts
-            $linkPath = "$linkDir\$name.lnk"
-            $lnk = $shell.CreateShortcut($linkPath)
-            $target = $lnk.TargetPath
-            $params = $lnk.Arguments
-            $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
+        # publish apps
+        if(-not $skipPublish) {
+            Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
+
+            $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
+            $shell = New-Object -ComObject WScript.Shell
+            foreach ($event in $installEvents) {
+                $name = $event.name
     
-            # trim off illegal chars
-            $xaName = $name -replace "[\\\/;:#.*?=<>\[\]()]", ""
+                # get values out of the shortcuts
+                $linkPath = "$linkDir\$name.lnk"
+                $lnk = $shell.CreateShortcut($linkPath)
+                $target = $lnk.TargetPath
+                $params = $lnk.Arguments
+                $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
+    
+                # trim off illegal chars
+                $xaName = $name -replace "[\\\/;:#.*?=<>\[\]()]", ""
 
-            # check if the app is already here
-            $app = Get-XAApplication -BrowserName $xaName -ErrorAction SilentlyContinue
-            if(-not $app) {
-                # add the app
-                $ctxIcon = Get-CtxIcon $icon[0] -Index $icon[1] 
-                $app = New-XAApplication $xaName `
-                    -ApplicationType ServerInstalled `
-                    -CommandLineExecutable "`"$target`" $params" `
-                    -ServerNames ($env:COMPUTERNAME) `
-                    -Accounts $users `
-                    -EncodedIconData $ctxIcon.EncodedIconData 
+                # check if the app is already here
+                $app = Get-XAApplication -BrowserName $xaName -ErrorAction SilentlyContinue
+                if(-not $app) {
+                    # add the app
+                    $ctxIcon = Get-CtxIcon $icon[0] -Index $icon[1] 
+                    $app = New-XAApplication $xaName `
+                        -ApplicationType ServerInstalled `
+                        -CommandLineExecutable "`"$target`" $params" `
+                        -ServerNames ($env:COMPUTERNAME) `
+                        -Accounts $users `
+                        -EncodedIconData $ctxIcon.EncodedIconData 
 
-                if($app) {
-                    Write-Output "$xaName added"
+                    if($app) {
+                        Write-Output "$xaName published"
+                    }
                 }
             }
         }
@@ -228,7 +248,7 @@ if(-not $(LoginIf $user $password $turbo $server)) {
 }
    
 # subscribe
-Subscribe $channel $users $cacheApps.IsPresent $turbo $server
+Subscribe $channel $users $cacheApps.IsPresent $skipPublish.IsPresent $turbo $server
 
 Write-Output "Subscription complete"
 
