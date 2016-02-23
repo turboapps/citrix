@@ -35,6 +35,10 @@ The Turbo.net user with access to the channel. If not specified then will be pro
 
 The password for the Turbo.net user. If not specified then will be prompted if necessary.
 
+.PARAMETER cacheApps
+
+Whether the applications in the channel are to be cached locally. This could be a long operation.
+
 #>
 
 
@@ -50,7 +54,9 @@ param
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net user with access to the channel")]
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo.net user")]
-    [string] $password
+    [string] $password,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Whether the applications in the channel are to be cached locally")]
+    [switch] $cacheApps
 )
 
 # returns the path to turbo.exe or empty string if the client is not installed
@@ -146,18 +152,15 @@ function LoginIf([string]$user, [string]$password, [string]$turbo, [string]$serv
     }
 }
 
-function Subscribe([string]$subscription, [string[]]$users, [string]$turbo, [string]$server = "") {
+function Subscribe([string]$subscription, [string[]]$users, [bool]$cacheApps, [string]$turbo, [string]$server = "") {
     
     if($server) {
-        # send off to the server to perform
         Invoke-Command -ComputerName $server `
-            -ArgumentList $subscription, $users, $turbo `
+            -ArgumentList $subscription, $users, $cacheApps, $turbo `
             -ScriptBlock ${function:Subscribe}
     }
     else {
-        # perform locally
-        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
-
+        # subscribe to the channel
         $events = & $turbo subscribe $subscription --all-users --format=rpc | ConvertFrom-Json
         $installEvents = $events | where { $_.event -and $_.event -eq "install" }
         if(-not $installEvents) {
@@ -165,7 +168,9 @@ function Subscribe([string]$subscription, [string[]]$users, [string]$turbo, [str
             return
         }
     
-        # loop over all the installed apps
+        # publish apps
+        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
+
         $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
         $shell = New-Object -ComObject WScript.Shell
         foreach ($event in $installEvents) {
@@ -198,6 +203,11 @@ function Subscribe([string]$subscription, [string[]]$users, [string]$turbo, [str
                 }
             }
         }
+
+        # pre-cache apps if necessary
+        if($cacheApps) {
+            & $turbo subscription update $subscription
+        }
     }
 }
 
@@ -218,7 +228,7 @@ if(-not $(LoginIf $user $password $turbo $server)) {
 }
    
 # subscribe
-Subscribe $channel $users $turbo $server
+Subscribe $channel $users $cacheApps.IsPresent $turbo $server
 
 Write-Output "Subscription complete"
 

@@ -35,6 +35,10 @@ The Turbo.net user with access to the channel. If not specified then will be pro
 
 The password for the Turbo.net user. If not specified then will be prompted if necessary.
 
+.PARAMETER cacheApps
+
+Whether the applications in the channel are to be cached locally. This could be a long operation.
+
 #>
 
 
@@ -50,7 +54,9 @@ param
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net user with access to the channel")]
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo.net user")]
-    [string] $password
+    [string] $password,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Whether the applications in the channel are to be cached locally")]
+    [switch] $cacheApps
 )
 
 # returns the path to turbo.exe or empty string if the client is not installed
@@ -146,11 +152,11 @@ function LoginIf([string]$user, [string]$password, [string]$turbo, [string]$serv
     }
 }
 
-function Subscribe([string]$subscription, [string]$deliveryGroup, [string]$turbo, [string]$server = "") {
+function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheApps, [string]$turbo, [string]$server = "") {
     
     if($server) {
         Invoke-Command -ComputerName $server `
-            -ArgumentList $subscription, $deliveryGroup, $turbo `
+            -ArgumentList $subscription, $deliveryGroup, $cacheApps, $turbo `
             -ScriptBlock ${function:Subscribe}
     }
     else {
@@ -208,6 +214,11 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [string]$turbo
                 }
             }
         }
+
+        # pre-cache apps if necessary
+        if($cacheApps) {
+            & $turbo subscription update $subscription
+        }
     }
 }
 
@@ -228,6 +239,6 @@ if(-not $(LoginIf $user $password $turbo $server)) {
 }
    
 # subscribe
-Subscribe $channel $deliveryGroup $turbo $server
+Subscribe $channel $deliveryGroup $cacheApps.IsPresent $turbo $server
 
 Write-Output "Subscription complete"
