@@ -15,6 +15,10 @@ The path to a certificate to sign the scripts. If blank, no signing is performed
 
 The password for the certificate if necessary.
 
+.PARAMETER push
+
+If the image should be pushed on successful build.
+
 #>
 
 
@@ -24,7 +28,9 @@ param
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The path to a certificate to sign the scripts")]
     [string] $certPath,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the certificate")]
-    [string] $certPassword
+    [string] $certPassword,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="If the image should be pushed on successful build")]
+    [switch] $push
 )
 
 
@@ -53,3 +59,8 @@ if($certPath) {
 # build
 $tag = Get-Date -Format yyyy.MM.dd
 & turbo build $PSScriptRoot\turbo.me $tag --mount=$stage=C:\Scripts --overwrite 
+
+# push if successful
+if($LASTEXITCODE -eq 0 -and $push.IsPresent) {
+    & turbo push citrix/turbocitrix-tools:$tag
+}
