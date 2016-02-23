@@ -51,5 +51,5 @@ if($certPath) {
 }
 
 # build
-$tag = Get-Date -Format yyyy.mm.dd
+$tag = Get-Date -Format yyyy.MM.dd
 & turbo build $PSScriptRoot\turbo.me $tag --mount=$stage=C:\Scripts --overwrite 
