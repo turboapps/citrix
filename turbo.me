@@ -1,0 +1,35 @@
+#
+# TurboCitrix Tools turbo.me file
+# https://github.com/turboapps/citrix]
+#
+# Created with Turbo CMD version 1.4.2581
+#
+# Licensed under the Apache License, Version 2.0
+# http://www.apache.org/licenses/LICENSE-2.0
+
+###################################
+# Meta tags
+###################################
+
+meta title="TurboCitrix Tools"
+meta namespace="citrix"
+meta name="turbocitrix-tools"
+var version=1
+meta tag=version
+
+
+###################################
+# Environment Variables
+###################################
+
+env PSModulePath="C:\Windows\SysWOW64\WindowsPowerShell\v1.0\Modules\"
+
+
+###################################
+# Copy Files
+###################################
+
+batch
+    mkdir C:\TurboCitrixTools
+    xcopy C:\Scripts\turbo C:\TurboCitrixTools /s
+
