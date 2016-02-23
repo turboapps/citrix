@@ -21,7 +21,7 @@ The name of the channel to subscribe to.
 
 .PARAMETER deliveryGroup
 
-The name of the XenApp delivery group to add the applications to.
+The name of the XenApp delivery group to publish the applications to. If blank, no apps will be published.
 
 .PARAMETER server
 
@@ -43,7 +43,7 @@ param
 (
     [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the channel to subscribe to")]
     [string] $channel,
-    [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the XenApp delivery group to add the applications to")]
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the XenApp delivery group to publish the applications to")]
     [string] $deliveryGroup,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of a remote XenApp server")]
     [string] $server,
@@ -149,55 +149,62 @@ function LoginIf([string]$user, [string]$password, [string]$turbo, [string]$serv
 function Subscribe([string]$subscription, [string]$deliveryGroup, [string]$turbo, [string]$server = "") {
     
     if($server) {
-        # send off to the server to perform
         Invoke-Command -ComputerName $server `
             -ArgumentList $subscription, $deliveryGroup, $turbo `
             -ScriptBlock ${function:Subscribe}
     }
     else {
-        # perform locally
-        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
-
+        # subscribe to the channel
         $events = & $turbo subscribe $subscription --all-users --format=rpc | ConvertFrom-Json
         $installEvents = $events | where { $_.event -and $_.event -eq "install" }
         if(-not $installEvents) {
             $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Output $_.message }
             return
         }
-    
-        # loop over all the installed apps
-        $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
-        $shell = New-Object -ComObject WScript.Shell
+        
+        # show which apps were subscribe to
         foreach ($event in $installEvents) {
             $name = $event.name
+            Write-Output "$name subscribed"
+        }
     
-            # get values out of the shortcuts
-            $linkPath = "$linkDir\$name.lnk"
-            $lnk = $shell.CreateShortcut($linkPath)
-            $target = $lnk.TargetPath
-            $params = $lnk.Arguments
-            $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
+        # publish the apps to the xenapp server
+        if($deliveryGroup) {
+            Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
+
+            $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
+            $shell = New-Object -ComObject WScript.Shell
+            foreach ($event in $installEvents) {
+                $name = $event.name
     
-            # trim off illegal chars
-            $xaName = $name -replace "[\\\/;:#.*?=<>\[\]()]", ""
+                # get values out of the shortcuts
+                $linkPath = "$linkDir\$name.lnk"
+                $lnk = $shell.CreateShortcut($linkPath)
+                $target = $lnk.TargetPath
+                $params = $lnk.Arguments
+                $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
+    
+                # trim off illegal chars
+                $xaName = $name -replace "[\\\/;:#.*?=<>\[\]()]", ""
 
-            # check if the app is already here
-            $app = Get-BrokerApplication -name $xaName -ErrorAction SilentlyContinue
-            if(-not $app) {
-                # store the icon
-                $ctxIcon = Get-CtxIcon -FileName $icon[0] -Index $icon[1]
-                $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData
+                # check if the app is already here
+                $app = Get-BrokerApplication -name $xaName -ErrorAction SilentlyContinue
+                if(-not $app) {
+                    # store the icon
+                    $ctxIcon = Get-CtxIcon -FileName $icon[0] -Index $icon[1]
+                    $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData
 
-                # add the app
-                $app = New-BrokerApplication `
-                    -Name $xaName `
-                    -CommandLineExecutable $target `
-                    -CommandLineArguments $params `
-                    -DesktopGroup $deliveryGroup `
-                    -IconUid $brokerIcon.Uid
+                    # add the app
+                    $app = New-BrokerApplication `
+                        -Name $xaName `
+                        -CommandLineExecutable $target `
+                        -CommandLineArguments $params `
+                        -DesktopGroup $deliveryGroup `
+                        -IconUid $brokerIcon.Uid
 
-                if($app) {
-                    Write-Output "$xaName added"
+                    if($app) {
+                        Write-Output "$xaName published"
+                    }
                 }
             }
         }
