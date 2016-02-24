@@ -93,15 +93,10 @@ function InstallTurboIf([string]$server = "") {
             $turboInstaller = "$turboInstaller.exe"
 
             # install for all users
-            & $turboInstaller --all-users --silent
-
-            # wait for process to complete (Start-Process didn't return with -wait after the installer process exited for some reason)
-            $ret = (split-path $turboInstaller -Leaf) -match "(.*)\.([^.]*)" # get the filename w/o extension
-            $exe = $matches[1]
-            $proc = 1
-            while($proc) { # loop until the installer is no longer running
-                Start-Sleep -s 2
-                $proc = Get-Process $exe -ErrorAction SilentlyContinue | Select-Object name
+            $ret = Start-Process -FilePath $turboInstaller -ArgumentList "--all-users", "--silent" -Wait -PassThru
+            if($ret.ExitCode -ne 0) {
+                Write-Error "There was an unexpected error installing the client. Please check the setup logs and confirm that you are running as an administrator."
+                return "";
             }
         }
         finally {
