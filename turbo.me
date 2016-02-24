@@ -7,29 +7,24 @@
 # Licensed under the Apache License, Version 2.0
 # http://www.apache.org/licenses/LICENSE-2.0
 
-###################################
-# Meta tags
-###################################
+# need admin to set the execution policy
+requires privilege:admin
 
+# meta tags
 meta title="TurboCitrix Tools"
 meta namespace="citrix"
 meta name="turbocitrix-tools"
 var version=1
 meta tag=version
 
-
-###################################
-# Environment Variables
-###################################
-
+# environment Variables
 env PSModulePath="C:\Windows\SysWOW64\WindowsPowerShell\v1.0\Modules\"
 
-
-###################################
-# Copy Files
-###################################
-
+# copy Files
 batch
     mkdir C:\TurboCitrixTools
     xcopy C:\Scripts\turbo C:\TurboCitrixTools /s
 
+# set the execution policy to allow running our scripts w/o issue
+batch
+    powershell -command set-executionpolicy remotesigned
