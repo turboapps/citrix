@@ -263,6 +263,11 @@ function DoWork() {
     return 0
 }
 
+# set the server to the local machine if not specified
+# this will make the script use remoting even for a local machine but this is necessary to escape the container isolation for client installs
+if(-not $server) {
+    $server = $env:COMPUTERNAME
+}
 
 $exitCode = DoWork
 
