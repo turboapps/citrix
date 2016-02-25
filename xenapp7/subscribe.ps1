@@ -223,29 +223,37 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
     }
 }
 
-# install the client if necessary
-Write-Output "Checking if Turbo client is installed..."
-$turbo = InstallTurboIf $server
-if(-not $turbo) {
-    Write-Error "Client must be installed to continue"
-    exit -1;
-}
+function DoWork() {
 
-Write-Output "Subscribe to $channel..."
+    # install the client if necessary
+    Write-Output "Checking if Turbo client is installed..."
+    $turbo = InstallTurboIf $server
+    if(-not $turbo) {
+        Write-Error "Client must be installed to continue"
+        return -1;
+    }
 
-# login if necessary
-if(-not $(LoginIf $user $password $turbo $server)) {
-    Write-Error "Must be logged in to continue"
-    exit -1
-}
+    Write-Output "Subscribe to $channel..."
+
+    # login if necessary
+    if(-not $(LoginIf $user $password $turbo $server)) {
+        Write-Error "Must be logged in to continue"
+        return -1
+    }
    
-# subscribe
-Subscribe $channel $deliveryGroup $cacheApps.IsPresent $turbo $server
+    # subscribe
+    Subscribe $channel $deliveryGroup $cacheApps.IsPresent $turbo $server
 
-Write-Output "Subscription complete"
+    Write-Output "Subscription complete"
 
+    return 0
+}
+
+$exitCode = DoWork
 
 if($waitOnExit.IsPresent -and $host.Name -notmatch "ise") { # ReadKey not supported in the ISE by design
     Write-Host "Press any key to continue"
     $ret = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
 }
+
+Exit $exitCode
