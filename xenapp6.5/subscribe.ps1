@@ -43,6 +43,10 @@ The applications in the channel are to be cached locally. This could be a long o
 
 The applications in the channel are not to be published to the XenApp server.
 
+.PARAMETER waitOnExit
+
+Waits for user confirmation after execution completes
+
 #>
 
 
@@ -62,7 +66,9 @@ param
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are to be cached locally")]
     [switch] $cacheApps,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are not to be published to the XenApp server")]
-    [switch] $skipPublish
+    [switch] $skipPublish,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Waits for user confirmation after execution completes")]
+    [switch] $waitOnExit
 )
 
 # returns the path to turbo.exe or empty string if the client is not installed
@@ -247,3 +253,7 @@ Subscribe $channel $users $cacheApps.IsPresent $skipPublish.IsPresent $turbo $se
 
 Write-Output "Subscription complete"
 
+if($waitOnExit.IsPresent -and $host.Name -notmatch "ise") { # ReadKey not supported in the ISE by design
+    Write-Host "Press any key to continue"
+    $ret = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}

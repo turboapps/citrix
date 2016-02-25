@@ -39,6 +39,10 @@ The password for the Turbo.net user. If not specified then will be prompted if n
 
 Whether the applications in the channel are to be cached locally. This could be a long operation.
 
+.PARAMETER waitOnExit
+
+Waits for user confirmation after execution completes
+
 #>
 
 
@@ -56,7 +60,9 @@ param
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo.net user")]
     [string] $password,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Whether the applications in the channel are to be cached locally")]
-    [switch] $cacheApps
+    [switch] $cacheApps,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Waits for user confirmation after execution completes")]
+    [switch] $waitOnExit
 )
 
 # returns the path to turbo.exe or empty string if the client is not installed
@@ -237,3 +243,9 @@ if(-not $(LoginIf $user $password $turbo $server)) {
 Subscribe $channel $deliveryGroup $cacheApps.IsPresent $turbo $server
 
 Write-Output "Subscription complete"
+
+
+if($waitOnExit.IsPresent -and $host.Name -notmatch "ise") { # ReadKey not supported in the ISE by design
+    Write-Host "Press any key to continue"
+    $ret = $host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+}
