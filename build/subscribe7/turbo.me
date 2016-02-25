@@ -29,6 +29,7 @@ batch
 batch
     echo @echo off > c:\turbocitrixtools\startup.cmd
     echo cmd.exe /c powershell -file c:\turbocitrixtools\subscribe.ps1 %%* >> c:\turbocitrixtools\startup.cmd
+    echo exit /b %%errorlevel%% >> c:\turbocitrixtools\startup.cmd
 
 # set the execution policy to allow running our scripts w/o issue
 cmd powershell -command set-executionpolicy remotesigned

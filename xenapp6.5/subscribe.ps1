@@ -13,7 +13,7 @@ This cmdlet will automatically download and install the Turbo client if it isn't
 
 Can install the client manually by downloading from http://start.turbo.net/install and running "turbo-plugin.exe --all-users --silent" as admin.
 
-Requires XenApp 6.5. Requires Turbo.net Client 3.33.935+.
+Requires Powershell 3.0+. Requires XenApp 6.5. Requires Turbo.net Client 3.33.935+.
 
 .PARAMETER channel
 
@@ -184,7 +184,7 @@ function Subscribe(
         # show which apps were subscribe to
         foreach ($event in $installEvents) {
             $name = $event.name
-            Write-Output "$name subscribed"
+            Write-Host "$name subscribed"
         }
     
         # publish apps
@@ -219,7 +219,7 @@ function Subscribe(
                         -EncodedIconData $ctxIcon.EncodedIconData 
 
                     if($app) {
-                        Write-Output "$xaName published"
+                        Write-Host "$xaName published"
                     }
                 }
             }
@@ -233,15 +233,21 @@ function Subscribe(
 }
 
 function DoWork() {
+    # check if proper version
+    if($PSVersionTable.PSVersion.Major -lt 3) {
+        Write-Error "This script requires Powershell 3.0 or greater"
+        return -1
+    }
+
     # install the client if necessary
-    Write-Output "Checking if Turbo client is installed..."
+    Write-Host "Checking if Turbo client is installed..."
     $turbo = InstallTurboIf $server
     if(-not $turbo) {
         Write-Error "Client must be installed to continue"
-        return -1;
+        return -1
     }
 
-    Write-Output "Subscribe to $channel..."
+    Write-Host "Subscribe to $channel..."
 
     # login if necessary
     if(-not $(LoginIf $user $password $turbo $server)) {
@@ -252,7 +258,7 @@ function DoWork() {
     # subscribe
     Subscribe $channel $users $cacheApps.IsPresent $skipPublish.IsPresent $turbo $server
 
-    Write-Output "Subscription complete"
+    Write-Host "Subscription complete"
 
     return 0
 }

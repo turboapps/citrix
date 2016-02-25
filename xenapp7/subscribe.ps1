@@ -13,7 +13,7 @@ This cmdlet will automatically download and install the Turbo client if it isn't
 
 Can install the client manually by downloading from http://start.turbo.net/install and running "turbo-plugin.exe --all-users --silent" as admin.
 
-Requires XenApp 7.*.
+Requires Powershell 3.0+. Requires XenApp 7.*.
 
 .PARAMETER channel
 
@@ -172,7 +172,7 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
         # show which apps were subscribe to
         foreach ($event in $installEvents) {
             $name = $event.name
-            Write-Output "$name subscribed"
+            Write-Host "$name subscribed"
         }
     
         # publish the apps to the xenapp server
@@ -210,7 +210,7 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
                         -IconUid $brokerIcon.Uid
 
                     if($app) {
-                        Write-Output "$xaName published"
+                        Write-Host "$xaName published"
                     }
                 }
             }
@@ -224,16 +224,21 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
 }
 
 function DoWork() {
+    # check if proper version
+    if($PSVersionTable.PSVersion.Major -lt 3) {
+        Write-Error "This script requires Powershell 3.0 or greater"
+        return -1
+    }
 
     # install the client if necessary
-    Write-Output "Checking if Turbo client is installed..."
+    Write-Host "Checking if Turbo client is installed..."
     $turbo = InstallTurboIf $server
     if(-not $turbo) {
         Write-Error "Client must be installed to continue"
-        return -1;
+        return -1
     }
 
-    Write-Output "Subscribe to $channel..."
+    Write-Host "Subscribe to $channel..."
 
     # login if necessary
     if(-not $(LoginIf $user $password $turbo $server)) {
@@ -244,7 +249,7 @@ function DoWork() {
     # subscribe
     Subscribe $channel $deliveryGroup $cacheApps.IsPresent $turbo $server
 
-    Write-Output "Subscription complete"
+    Write-Host "Subscription complete"
 
     return 0
 }
