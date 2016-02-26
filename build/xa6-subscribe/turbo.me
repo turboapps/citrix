@@ -1,5 +1,5 @@
 #
-# TurboCitrix Subscribe7 turbo.me file
+# TurboCitrix Subscribe for XenApp 6.5 turbo.me file
 # https://github.com/turboapps/citrix]
 #
 # Created with Turbo CMD version 1.4.2581
@@ -11,9 +11,9 @@
 requires privilege:admin
 
 # meta tags
-meta title="TurboCitrix Subscribe 7"
+meta title="TurboCitrix Subscribe for XenApp 6.5"
 meta namespace="turbocitrix"
-meta name="subscribe7"
+meta name="xa6-subscribe"
 var version=1
 meta tag=version
 
@@ -23,7 +23,7 @@ env PSModulePath="C:\Windows\SysWOW64\WindowsPowerShell\v1.0\Modules\"
 # copy Files
 batch
     mkdir C:\TurboCitrixTools
-    copy C:\Scripts\xenapp7\subscribe.ps1 C:\TurboCitrixTools
+    copy C:\Scripts\xenapp6.5\subscribe.ps1 C:\TurboCitrixTools
 
 # generate startup file so we can pass args properly from turbo
 batch
