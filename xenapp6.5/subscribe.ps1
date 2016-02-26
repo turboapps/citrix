@@ -35,6 +35,10 @@ The Turbo.net user with access to the channel. If not specified then will be pro
 
 The password for the Turbo.net user. If not specified then will be prompted if necessary.
 
+.PARAMETER apiKey
+
+The Turbo.net api key.
+
 .PARAMETER cacheApps
 
 The applications in the channel are to be cached locally. This could be a long operation.
@@ -63,6 +67,8 @@ param
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo.net user")]
     [string] $password,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net api key")]
+    [string] $apiKey,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are to be cached locally")]
     [switch] $cacheApps,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are not to be published to the XenApp server")]
@@ -100,7 +106,7 @@ function InstallTurboIf([string]$server = "") {
 
             # install for all users
             $ret = Start-Process -FilePath $turboInstaller -ArgumentList "--all-users", "--silent" -Wait -PassThru
-            if($ret.ExitCode -ne 0) {
+            if($LASTEXITCODE -ne 0) {
                 Write-Error "There was an unexpected error installing the client. Please check the setup logs and confirm that you are running as an administrator."
                 return "";
             }
@@ -122,40 +128,53 @@ function InstallTurboIf([string]$server = "") {
 }
 
 
-function LoginIf([string]$user, [string]$password, [string]$turbo, [string]$server = "") {
+function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server = "") {
     
     if($server) {
         # send off to the server to perform
         Invoke-Command -ComputerName $server `
-            -ArgumentList $user, $password, $turbo `
+            -ArgumentList $user, $password, $apikey, $turbo `
             -ScriptBlock ${function:LoginIf}
     }
     else {
-        # check if we're logged in (and as the correct user if necessary)
-        $login = & $turbo login --format=json | ConvertFrom-Json
-
-        if($login.result.exitCode -eq 0 -and $user -and $login.result.user.login -ne $user) {
-            # wrong user so re-login
-            $login.result.exitCode = -1
-        }
-
-        # loop until we have successful login
-        while($login.result.exitCode -ne 0)
-        {
-            if(-not $password) {
-                $cred = Get-Credential -UserName $user -Message "Enter your Turbo.net password"
-                if(-not $cred) {
-                    $false
-                    return
-                }
-                $user = $cred.UserName
-                $password = $cred.GetNetworkCredential().Password
+        # use the api key if we have it
+        if($apikey) {
+            $ret = & $turbo login --api-key=$apikey
+            if($LASTEXITCODE -ne 0) {
+                Write-Error "Invalid api key"
+                return $false
             }
-            $login = & $turbo login --format=json $user $password | ConvertFrom-Json
-            $password = ""
+        }
+        else {        
+            # check if we're logged in (and as the correct user if necessary)
+            $login = & $turbo login --format=json | ConvertFrom-Json
+
+            $success = $true
+            if($LASTEXITCODE -eq 0 -and $user -and $login.result.user.login -ne $user) {
+                # wrong user so re-login
+                $success = $false
+            }
+
+            # loop until we have successful login
+            while(-not $success)
+            {
+                if(-not $password) {
+                    $cred = Get-Credential -UserName $user -Message "Enter your Turbo.net credentials"
+                    if(-not $cred) {
+                        return $false
+                    }
+                    $user = $cred.UserName
+                    $password = $cred.GetNetworkCredential().Password
+                }
+                $login = & $turbo login --format=json $user $password | ConvertFrom-Json
+                if($LASTEXITCODE -eq 0) {
+                    $success = $true
+                }
+                $password = ""
+            }
         }
 
-        $true
+        return $true
     }
 }
 
@@ -175,11 +194,12 @@ function Subscribe(
     else {
         # subscribe to the channel
         $events = & $turbo subscribe $subscription --all-users --format=rpc | ConvertFrom-Json
-        $installEvents = $events | where { $_.event -and $_.event -eq "install" }
-        if(-not $installEvents) {
-            $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Output $_.message }
-            return
+        if($LASTEXITCODE -ne 0) {
+            $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Host $_.message }
+            return $false
         }
+
+        $installEvents = $events | where { $_.event -and $_.event -eq "install" }
         
         # show which apps were subscribe to
         foreach ($event in $installEvents) {
@@ -188,6 +208,7 @@ function Subscribe(
         }
     
         # publish apps
+        $ret = $true
         if(-not $skipPublish) {
             Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
 
@@ -221,14 +242,24 @@ function Subscribe(
                     if($app) {
                         Write-Host "$xaName published"
                     }
+                    else {
+                        Write-Host "$xaName was not published"
+                        $ret = $false
+                    }
                 }
             }
         }
 
         # pre-cache apps if necessary
         if($cacheApps) {
-            & $turbo subscription update $subscription
+            $r = & $turbo subscription update $subscription
+            if($LASTEXITCODE -ne 0) {
+                Write-Host "Error while caching the subscription"
+                $ret = $false
+            }
         }
+
+        return $ret
     }
 }
 
@@ -250,23 +281,25 @@ function DoWork() {
     Write-Host "Subscribe to $channel..."
 
     # login if necessary
-    if(-not $(LoginIf $user $password $turbo $server)) {
+    if(-not $(LoginIf $user $password $apiKey $turbo $server)) {
         Write-Error "Must be logged in to continue"
         return -1
     }
    
     # subscribe
-    Subscribe $channel $users $cacheApps.IsPresent $skipPublish.IsPresent $turbo $server
-
-    Write-Host "Subscription complete"
-
+    if(-not $(Subscribe $channel $users $cacheApps.IsPresent $skipPublish.IsPresent $turbo $server)) {
+        Write-Error "Deployment failed"
+        return -1
+    }
+    
+    Write-Host "Deployment successful"
     return 0
 }
 
 # set the server to the local machine if not specified
 # this will make the script use remoting even for a local machine but this is necessary to escape the container isolation for client installs
 if(-not $server) {
-    $server = $env:COMPUTERNAME
+    $server = "127.0.0.1"
 }
 
 $exitCode = DoWork
