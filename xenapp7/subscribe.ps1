@@ -99,8 +99,18 @@ function InstallTurboIf([string]$server = "") {
             $turboInstaller = "$turboInstaller.exe"
 
             # install for all users
-            $ret = Start-Process -FilePath $turboInstaller -ArgumentList "--all-users", "--silent" -Wait -PassThru
-            if($LASTEXITCODE -ne 0) {
+            # use Process.Start rather than Start-Process so that we don't hang on spawned child processes
+            $p = New-Object System.Diagnostics.Process
+            $p.StartInfo.FileName = $turboInstaller
+            $p.StartInfo.Arguments = "--all-users --silent"
+            $p.StartInfo.UseShellExecute = $false
+            if(!$p.Start()) {
+                return ""
+            }
+
+            $p.WaitForExit()
+
+            if($p.ExitCode -ne 0) {
                 Write-Error "There was an unexpected error installing the client. Please check the setup logs and confirm that you are running as an administrator."
                 return "";
             }
