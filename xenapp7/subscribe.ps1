@@ -194,10 +194,12 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
             $name = $event.name
             Write-Host "$name subscribed"
         }
-    
+            
         # publish the apps to the xenapp server
         $ret = $true
         if($deliveryGroup) {
+            Write-Host " " # space things out a bit
+
             Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
 
             $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
@@ -243,6 +245,8 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
 
         # pre-cache apps if necessary
         if($cacheApps) {
+            Write-Host " " # space things out a bit
+
             $r = & $turbo subscription update $subscription
             if($LASTEXITCODE -ne 0) {
                 Write-Host "Error while caching the subscription"
@@ -269,7 +273,7 @@ function DoWork() {
         return -1
     }
 
-    Write-Host "Subscribe to $channel..."
+    Write-Host "`nSubscribe to $channel..."
 
     # login if necessary
     if(-not $(LoginIf $user $password $apiKey $turbo $server)) {
@@ -279,11 +283,11 @@ function DoWork() {
    
     # subscribe
     if(-not $(Subscribe $channel $deliveryGroup $cacheApps.IsPresent $turbo $server)) {
-        Write-Error "Deployment failed"
+        Write-Error "`nDeployment failed"
         return -1
     }
     
-    Write-Host "Deployment successful"
+    Write-Host "`nDeployment successful"
 
     return 0
 }
