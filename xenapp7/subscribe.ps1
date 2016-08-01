@@ -39,6 +39,10 @@ The password for the Turbo.net user. If not specified then will be prompted if n
 
 The Turbo.net api key.
 
+.PARAMETER allUsers
+
+Applies the login to all users on the machine.
+
 .PARAMETER cacheApps
 
 The applications in the channel are to be cached locally. This could be a long operation.
@@ -65,6 +69,8 @@ param
     [string] $password,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo.net api key")]
     [string] $apiKey,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Applies the login to all users on the machine.")]
+    [switch] $allUsers,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are to be cached locally")]
     [switch] $cacheApps,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Waits for user confirmation after execution completes")]
@@ -132,18 +138,23 @@ function InstallTurboIf([string]$server = "") {
 }
 
 
-function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server = "") {
+function LoginIf([string]$user, [string]$password, [string]$apikey, [bool]$allUsers, [string]$turbo, [string]$server = "") {
     
     if($server) {
         # send off to the server to perform
         Invoke-Command -ComputerName $server `
-            -ArgumentList $user, $password, $apikey, $turbo `
+            -ArgumentList $user, $password, $apikey, $allUsers, $turbo `
             -ScriptBlock ${function:LoginIf}
     }
     else {
+        $allUsersSwitch = ""
+        if($allUsers) {
+            $allUsersSwitch = "--all-users"
+        }
+
         # use the api key if we have it
         if($apikey) {
-            $ret = & $turbo login --api-key=$apikey
+            $ret = & $turbo login --api-key=$apikey $allUsersSwitch
             if($LASTEXITCODE -ne 0) {
                 Write-Error "Invalid api key"
                 return $false
@@ -151,7 +162,7 @@ function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$tur
         }
         else {    
             # check if we're logged in (and as the correct user if necessary)
-            $login = & $turbo login --format=json | ConvertFrom-Json
+            $login = & $turbo login $allUsersSwitch --format=json | ConvertFrom-Json
             
             $success = $true
             if($LASTEXITCODE -eq 0 -and $user -and $login.result.user.login -ne $user) {
@@ -170,7 +181,7 @@ function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$tur
                     $user = $cred.UserName
                     $password = $cred.GetNetworkCredential().Password
                 }
-                $login = & $turbo login --format=json $user $password | ConvertFrom-Json
+                $login = & $turbo login --format=json $user $password $allUsersSwitch | ConvertFrom-Json
                 if($LASTEXITCODE -eq 0) {
                     $success = $true
                 }
@@ -286,7 +297,7 @@ function DoWork() {
     Write-Host "`nSubscribe to $channel..."
 
     # login if necessary
-    if(-not $(LoginIf $user $password $apiKey $turbo $server)) {
+    if(-not $(LoginIf $user $password $apiKey $allUsers $turbo $server)) {
         Write-Error "Must be logged in to continue"
         return -1
     }
