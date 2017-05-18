@@ -1,4 +1,4 @@
-﻿# Licensed under the Apache License, Version 2.0
+# Licensed under the Apache License, Version 2.0
 # http://www.apache.org/licenses/LICENSE-2.0
 
 <#
@@ -209,21 +209,28 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
         }
         
         $installEvents = $events | where { $_.event -and $_.event -eq "install" }
+        $uninstallEvents = $events | where { $_.event -and $_.event -eq "uninstall" }
         
         # show which apps were subscribe to
         foreach ($event in $installEvents) {
             $name = $event.name
             Write-Host "$name subscribed"
         }
+        
+        foreach ($event in $uninstallEvents) {
+            $name = $event.name
+            Write-Host "$name unsubscribed"
+        }
             
-        # publish the apps to the xenapp server
+        # publish/unpublish the apps to the xenapp server
         $ret = $true
         if($deliveryGroup) {
             Write-Host " " # space things out a bit
 
             Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
 
-            $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Turbo.net"
+            # publish new apps
+            $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs"
             $shell = New-Object -ComObject WScript.Shell
             foreach ($event in $installEvents) {
                 $name = $event.name
@@ -242,7 +249,7 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
                 $app = Get-BrokerApplication -name $xaName -ErrorAction SilentlyContinue
                 if(-not $app) {
                     # store the icon
-                    $ctxIcon = Get-CtxIcon -FileName $icon[0] -Index $icon[1]
+                    $ctxIcon = Get-BrokerIcon -FileName $icon[0] -Index $icon[1]
                     $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData
 
                     # add the app
@@ -260,6 +267,18 @@ function Subscribe([string]$subscription, [string]$deliveryGroup, [bool]$cacheAp
                         Write-Host "$xaName was not published"
                         $ret = $false
                     }
+                }
+            }
+            
+            # unpublish those that were removed
+            foreach ($event in $uninstallEvents) {
+                $name = $event.name
+                $xaName = $name -replace "[\\\/;:#.*?=<>\[\]()]", ""
+
+                $app = Get-BrokerApplication -name $xaName -ErrorAction SilentlyContinue
+                if($app) {
+                    Remove-BrokerApplication -InputObject $app
+                    Write-Host "$xaName unpublished"
                 }
             }
         }
