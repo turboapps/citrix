@@ -73,8 +73,6 @@ param
     [string] $deliveryGroup,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps content delivery server")]
     [string] $adminServer,
-    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of a remote Citrix Virtual Apps app server")]
-    [string] $appServer,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo Server user with access to the channel")]
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo Server user")]
@@ -207,6 +205,24 @@ function LoginIf([string]$user, [string]$password, [string]$apikey, [bool]$allUs
     }
 }
 
+function Get-AppServers([string]$deliveryGroup, [string]$adminServer = "") {
+
+    if($adminServer) {
+        Invoke-Command -ComputerName $adminServer `
+            -ArgumentList $deliveryGroup `
+            -ScriptBlock ${function:Get-AppServers}
+    }
+    else {
+    
+        Write-Host " " # space things out a bit
+
+        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
+
+        return Get-Brokermachine -DesktopGroupName $deliveryGroup
+        
+    }
+}
+
 function Subscribe([string]$subscription, [bool]$unsubscribe, [bool]$cacheApps, [string]$turbo, [string]$appServer, [bool]$invoke = $True) {
     
     if($invoke -and $appServer) {
@@ -217,11 +233,11 @@ function Subscribe([string]$subscription, [bool]$unsubscribe, [bool]$cacheApps, 
     else {
         # subscribe to the channel
         if(-not $unsubscribe) {
-            Write-Host "`nSubscribe to $subscription..."
+            Write-Host "`nSubscribe to $subscription on $appServer..."
             $events = & $turbo subscribe $subscription --all-users --format=rpc | ConvertFrom-Json
         }
         else {
-            Write-Host "`nUnsubscribe from $subscription..."
+            Write-Host "`nUnsubscribe from $subscription on $appServer..."
             $events = & $turbo unsubscribe $subscription --all-users --format=rpc | ConvertFrom-Json
         }
         if($LASTEXITCODE -ne 0) {
@@ -278,10 +294,6 @@ function Subscribe([string]$subscription, [bool]$unsubscribe, [bool]$cacheApps, 
         # return object with subscription events
         return new-object psobject -property @{InstalledApps = $installedApps; UninstalledApps = $uninstallEvents}
     }
-}
-
-function NormalizeAppName([string]$appName) {
-    return $appName -replace "[\\\/;:#.*?=<>\[\]()]", ""
 }
 
 function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$adminServer = "") {
@@ -352,45 +364,49 @@ function DoWork() {
         return -1
     }
 
-    # install the client if necessary
-    Write-Host "Checking if Turbo client is installed..."
-    $turbo = InstallTurboIf $appServer
-    if(-not $turbo) {
-        Write-Error "Client must be installed to continue"
-        return -1
-    }
-
-    # login if necessary
-    Write-Host "Login to Turbo..."
-    if(-not $(LoginIf $user $password $apiKey $allUsers $turbo $appServer)) {
-        Write-Error "Must be logged in to continue"
-        return -1
-    }
-   
-    # subscribe
-    $events = Subscribe $channel $unsubscribe $cacheApps $turbo $appServer
-    if($events -eq $null ) {
-        Write-Error "`nSubscription failed"
+    # get app servers in delivery group
+    Write-Host "Searching for application servers in the delivery group..."
+    $appServers = Get-AppServers $deliveryGroup $adminServer
+    if($appServers -eq $null ) {
+        Write-Error "`nUnable to find application servers for the specified delivery group"
         return -1
     }
     
-    # publish to citrix
-    Write-Host "Publish changes to Citrix..."
-    if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $adminServer)) {
-        Write-Error "`nDelivery group update failed"
-        return -1
+    foreach ($appServer in $appServers) {
+
+        # install the client if necessary
+        Write-Host "Checking if Turbo client is installed..."
+        $turbo = InstallTurboIf $appServer.DNSName
+        if(-not $turbo) {
+            Write-Error "Client must be installed to continue"
+            return -1
+        }
+
+        # login if necessary
+        Write-Host "Login to Turbo..."
+        if(-not $(LoginIf $user $password $apiKey $allUsers $turbo $appServer.DNSName)) {
+            Write-Error "Must be logged in to continue"
+            return -1
+        }
+   
+        # subscribe
+        $events = Subscribe $channel $unsubscribe $cacheApps $turbo $appServer.DNSName
+        if($events -eq $null ) {
+            Write-Error "`nSubscription failed"
+            return -1
+        }
+    
+        # publish to citrix
+        Write-Host "Publish changes to Citrix..."
+        if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $adminServer)) {
+            Write-Error "`nDelivery group update failed"
+            return -1
+        }
     }
     
     Write-Host "`nDeployment successful"
 
     return 0
-}
-
-
-# set the server to the local machine if not specified
-# this will make the script use remoting even for a local machine but this is necessary to escape the container isolation for client installs
-if(-not $appServer) {
-    $appServer = "127.0.0.1"
 }
 
 $exitCode = DoWork
