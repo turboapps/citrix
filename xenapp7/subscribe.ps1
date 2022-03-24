@@ -63,8 +63,8 @@ param
     [string] $channel,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps delivery group to publish the applications to")]
     [string] $deliveryGroup,
-    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps content delivery server")]
-    [string] $adminServer,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps delivery controller server")]
+    [string] $deliveryControllerServer,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo Server user with access to the channel")]
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo Server user")]
@@ -201,9 +201,9 @@ function LoginIfLocal([string]$user, [string]$password, [string]$apikey, [string
 }
 
 
-function Get-AppServers([string]$deliveryGroup, [string]$adminServer) {
-    if($adminServer) {
-        Invoke-Command -ComputerName $adminServer `
+function Get-AppServers([string]$deliveryGroup, [string]$deliveryControllerServer) {
+    if($deliveryControllerServer) {
+        Invoke-Command -ComputerName $deliveryControllerServer `
             -ArgumentList $deliveryGroup `
             -ScriptBlock ${function:Get-AppServersLocal}
     }
@@ -302,10 +302,10 @@ function SubscribeLocal([string]$subscription, [bool]$unsubscribe, [bool]$cacheA
 
 
 # publish/unpublish the apps to the Citrix Virtual Apps delivery group
-function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$adminServer) {
+function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$deliveryControllerServer) {
     
-    if($adminServer) {
-        Invoke-Command -ComputerName $adminServer `
+    if($deliveryControllerServer) {
+        Invoke-Command -ComputerName $deliveryControllerServer `
             -ArgumentList $deliveryGroup, $installedApps, $uninstalledApps `
             -ScriptBlock ${function:UpdateDeliveryGroupLocal}
     }
@@ -325,11 +325,11 @@ function UpdateDeliveryGroupLocal([string]$deliveryGroup, [array]$installedApps,
     
         # check if the app is already here
         $name = $event.name -replace "[\\\/;:#.*?=<>\[\]()]", ""
-        $app = Get-BrokerApplication -Name $name -AdminAddress $adminServer -ErrorAction SilentlyContinue
+        $app = Get-BrokerApplication -Name $name -AdminAddress $deliveryControllerServer -ErrorAction SilentlyContinue
         if(-not $app) {
             # store the icon
-            $ctxIcon = Get-BrokerIcon -ServerName $event.Server -FileName $event.Icon[0] -Index $event.Icon[1] -AdminAddress $adminServer
-            $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData -AdminAddress $adminServer
+            $ctxIcon = Get-BrokerIcon -ServerName $event.Server -FileName $event.Icon[0] -Index $event.Icon[1] -AdminAddress $deliveryControllerServer
+            $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData -AdminAddress $deliveryControllerServer
 
             # add the app
             $app = New-BrokerApplication `
@@ -338,7 +338,7 @@ function UpdateDeliveryGroupLocal([string]$deliveryGroup, [array]$installedApps,
                 -CommandLineArguments $event.Params `
                 -DesktopGroup $deliveryGroup `
                 -IconUid $brokerIcon.Uid `
-                -AdminAddress $adminServer
+                -AdminAddress $deliveryControllerServer
 
             if($app) {
                 Write-Host "$name published"
@@ -355,9 +355,9 @@ function UpdateDeliveryGroupLocal([string]$deliveryGroup, [array]$installedApps,
     
         $name = $event.Name -replace "[\\\/;:#.*?=<>\[\]()]", ""
 
-        $app = Get-BrokerApplication -Name $name -AdminAddress $adminServer -ErrorAction SilentlyContinue
+        $app = Get-BrokerApplication -Name $name -AdminAddress $deliveryControllerServer -ErrorAction SilentlyContinue
         if($app) {
-            Remove-BrokerApplication -InputObject $app -AdminAddress $adminServer
+            Remove-BrokerApplication -InputObject $app -AdminAddress $deliveryControllerServer
             Write-Host "$name unpublished"
         }
     }
@@ -375,7 +375,7 @@ function DoWork() {
 
     # get app servers in delivery group
     Write-Host "Searching for application servers in the delivery group...`n"
-    $appServers = Get-AppServers $deliveryGroup $adminServer
+    $appServers = Get-AppServers $deliveryGroup $deliveryControllerServer
     if($appServers -eq $null ) {
         Write-Error "`nUnable to find application servers for the specified delivery group"
         return -1
@@ -407,7 +407,7 @@ function DoWork() {
     
         # publish to citrix
         Write-Host "Publish changes to Citrix...`n"
-        if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $adminServer)) {
+        if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $deliveryControllerServer)) {
             Write-Error "`nDelivery group update failed"
             return -1
         }
