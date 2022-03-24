@@ -29,10 +29,6 @@ The name of the Citrix Virtual Apps delivery group to publish the applications t
 The name of a Citrix Virtual Apps content delivery server. If this script is run from the content delivery server then this parameter is not required. 
 If this parameter is used then the current user must be an appropriate admin in Citirix and be a member of the Windows "Remote Management Users" group.
 
-.PARAMETER appServer
-
-The name of a remote Citrix Virtual Apps server.
-
 .PARAMETER user
 
 The Turbo Server user with access to the channel. If not specified then will be prompted if necessary.
@@ -44,10 +40,6 @@ The password for the Turbo Server user. If not specified then will be prompted i
 .PARAMETER apiKey
 
 The Turbo Server api key to be used instead of a user/password.
-
-.PARAMETER allUsers
-
-Applies the login to all users on the machine.
 
 .PARAMETER cacheApps
 
@@ -79,8 +71,6 @@ param
     [string] $password,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="A Turbo Server api key to be used instead of a user/password")]
     [string] $apiKey,
-    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="Applies the login to all users on the machine")]
-    [switch] $allUsers,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The channel is to be unsubscribed rather than subscribed")]
     [switch] $unsubscribe,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The applications in the channel are to be cached locally")]
@@ -150,23 +140,19 @@ function InstallTurboIf([string]$server = "") {
 }
 
 
-function LoginIf([string]$user, [string]$password, [string]$apikey, [bool]$allUsers, [string]$turbo, [string]$server = "") {
+function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server = "") {
     
     if($server) {
         # send off to the server to perform
         Invoke-Command -ComputerName $server `
-            -ArgumentList $user, $password, $apikey, $allUsers, $turbo `
+            -ArgumentList $user, $password, $apikey, $turbo `
             -ScriptBlock ${function:LoginIf}
     }
     else {
-        $allUsersSwitch = ""
-        if($allUsers) {
-            $allUsersSwitch = "--all-users"
-        }
 
         # use the api key if we have it
         if($apikey) {
-            $ret = & $turbo login --api-key=$apikey $allUsersSwitch
+            $ret = & $turbo login --api-key=$apikey --all-users
             if($LASTEXITCODE -ne 0) {
                 Write-Error "Invalid api key"
                 return $false
@@ -174,7 +160,7 @@ function LoginIf([string]$user, [string]$password, [string]$apikey, [bool]$allUs
         }
         else {    
             # check if we're logged in (and as the correct user if necessary)
-            $login = & $turbo login $allUsersSwitch --format=json | ConvertFrom-Json
+            $login = & $turbo login --all-users --format=json | ConvertFrom-Json
             
             $success = $true
             if($LASTEXITCODE -eq 0 -and $user -and $login.result.user.login -ne $user) {
@@ -193,7 +179,7 @@ function LoginIf([string]$user, [string]$password, [string]$apikey, [bool]$allUs
                     $user = $cred.UserName
                     $password = $cred.GetNetworkCredential().Password
                 }
-                $login = & $turbo login --format=json $user $password $allUsersSwitch | ConvertFrom-Json
+                $login = & $turbo login --format=json $user $password --all-users | ConvertFrom-Json
                 if($LASTEXITCODE -eq 0) {
                     $success = $true
                 }
@@ -384,7 +370,7 @@ function DoWork() {
 
         # login if necessary
         Write-Host "Login to Turbo..."
-        if(-not $(LoginIf $user $password $apiKey $allUsers $turbo $appServer.DNSName)) {
+        if(-not $(LoginIf $user $password $apiKey $turbo $appServer.DNSName)) {
             Write-Error "Must be logged in to continue"
             return -1
         }
