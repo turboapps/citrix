@@ -79,269 +79,292 @@ param
     [switch] $waitOnExit
 )
 
+
 # returns the path to turbo.exe or empty string if the client is not installed
-function InstallTurboIf([string]$server = "") {
+function InstallTurboIf([string]$server) {
     if($server) {
-        Invoke-Command -ComputerName $server -ScriptBlock ${function:InstallTurboIf}
+        Invoke-Command -ComputerName $server -ScriptBlock ${function:InstallTurboIfLocal}
     }
     else {
-        # check if the client is installed for all users
-        $relPath = "turbo\cmd\turbo.exe"
-        $turboInstallFiles = ("$env:ProgramFiles\$relPath", "${env:ProgramFiles(x86)}\$relPath")
-        foreach($turbo in $turboInstallFiles) {
-            if($(Test-Path $turbo)) {
-                return $turbo
-            }
-        }
-
-        try {
-            # download the latest client
-            $turboInstaller = [System.IO.Path]::GetTempFileName()
-            $ret = Invoke-WebRequest "http://start.turbo.net/install" -OutFile $turboInstaller
-            if($(Get-Item $turboInstaller).Length -eq 0) {
-                return ""
-            }
-
-            # rename as exe 
-            ren $turboInstaller "$turboInstaller.exe"
-            $turboInstaller = "$turboInstaller.exe"
-
-            # install for all users
-            # use Process.Start rather than Start-Process so that we don't hang on spawned child processes
-            $p = New-Object System.Diagnostics.Process
-            $p.StartInfo.FileName = $turboInstaller
-            $p.StartInfo.Arguments = "--all-users --silent"
-            $p.StartInfo.UseShellExecute = $false
-            if(!$p.Start()) {
-                return ""
-            }
-
-            $p.WaitForExit()
-
-            if($p.ExitCode -ne 0) {
-                Write-Error "There was an unexpected error installing the client. Please check the setup logs and confirm that you are running as an administrator."
-                return "";
-            }
-        }
-        finally {
-            # clean up
-            Remove-Item $turboInstaller
-        }
-        
-        # confirm install is successful
-        foreach($turbo in $turboInstallFiles) {
-            if($(Test-Path $turbo)) {
-                return $turbo
-            }
-        }
-
-        return ""
+        InstallTurboIfLocal
     }
 }
 
+function InstallTurboIfLocal() {
 
-function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server = "") {
+    # check if the client is installed for all users
+    $relPath = "turbo\cmd\turbo.exe"
+    $turboInstallFiles = ("$env:ProgramFiles\$relPath", "${env:ProgramFiles(x86)}\$relPath")
+    foreach($turbo in $turboInstallFiles) {
+        if($(Test-Path $turbo)) {
+            return $turbo
+        }
+    }
+
+    try {
+        # download the latest client
+        $turboInstaller = [System.IO.Path]::GetTempFileName()
+        $ret = Invoke-WebRequest "http://start.turbo.net/install" -OutFile $turboInstaller
+        if($(Get-Item $turboInstaller).Length -eq 0) {
+            return ""
+        }
+
+        # rename as exe 
+        ren $turboInstaller "$turboInstaller.exe"
+        $turboInstaller = "$turboInstaller.exe"
+
+        # install for all users
+        # use Process.Start rather than Start-Process so that we don't hang on spawned child processes
+        $p = New-Object System.Diagnostics.Process
+        $p.StartInfo.FileName = $turboInstaller
+        $p.StartInfo.Arguments = "--all-users --silent"
+        $p.StartInfo.UseShellExecute = $false
+        if(!$p.Start()) {
+            return ""
+        }
+
+        $p.WaitForExit()
+
+        if($p.ExitCode -ne 0) {
+            Write-Error "There was an unexpected error installing the client. Please check the setup logs and confirm that you are running as an administrator."
+            return "";
+        }
+    }
+    finally {
+        # clean up
+        Remove-Item $turboInstaller
+    }
     
+    # confirm install is successful
+    foreach($turbo in $turboInstallFiles) {
+        if($(Test-Path $turbo)) {
+            return $turbo
+        }
+    }
+
+    return ""
+}
+
+
+function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server) {
     if($server) {
         # send off to the server to perform
         Invoke-Command -ComputerName $server `
             -ArgumentList $user, $password, $apikey, $turbo `
-            -ScriptBlock ${function:LoginIf}
+            -ScriptBlock ${function:LoginIfLocal}
     }
     else {
-
-        # use the api key if we have it
-        if($apikey) {
-            $ret = & $turbo login --api-key=$apikey --all-users
-            if($LASTEXITCODE -ne 0) {
-                Write-Error "Invalid api key"
-                return $false
-            }
-        }
-        else {    
-            # check if we're logged in (and as the correct user if necessary)
-            $login = & $turbo login --all-users --format=json | ConvertFrom-Json
-            
-            $success = $true
-            if($LASTEXITCODE -eq 0 -and $user -and $login.result.user.login -ne $user) {
-                # wrong user so re-login
-                $success = $false
-            }
-
-            # loop until we have successful login
-            while(-not $success)
-            {
-                if(-not $password) {
-                    $cred = Get-Credential -UserName $user -Message "Enter your Turbo.net credentials"
-                    if(-not $cred) {
-                        return $false
-                    }
-                    $user = $cred.UserName
-                    $password = $cred.GetNetworkCredential().Password
-                }
-                $login = & $turbo login --format=json $user $password --all-users | ConvertFrom-Json
-                if($LASTEXITCODE -eq 0) {
-                    $success = $true
-                }
-                $password = ""
-            }
-        }
-
-        return $true
+        LoginIfLocal $user $password $apikey $turbo
     }
 }
 
-function Get-AppServers([string]$deliveryGroup, [string]$adminServer = "") {
+function LoginIfLocal([string]$user, [string]$password, [string]$apikey, [string]$turbo) {
 
+    # use the api key if we have it
+    if($apikey) {
+        $ret = & $turbo login --api-key=$apikey --all-users
+        if($LASTEXITCODE -ne 0) {
+            Write-Error "Invalid api key"
+            return $false
+        }
+    }
+    else {    
+        # check if we're logged in (and as the correct user if necessary)
+        $login = & $turbo login --all-users --format=json | ConvertFrom-Json
+        
+        $success = $true
+        if($LASTEXITCODE -eq 0 -and $user -and $login.result.user.login -ne $user) {
+            # wrong user so re-login
+            $success = $false
+        }
+
+        # loop until we have successful login
+        while(-not $success)
+        {
+            if(-not $password) {
+                $cred = Get-Credential -UserName $user -Message "Enter your Turbo.net credentials"
+                if(-not $cred) {
+                    return $false
+                }
+                $user = $cred.UserName
+                $password = $cred.GetNetworkCredential().Password
+            }
+            $login = & $turbo login --format=json $user $password --all-users | ConvertFrom-Json
+            if($LASTEXITCODE -eq 0) {
+                $success = $true
+            }
+            $password = ""
+        }
+    }
+
+    return $true
+}
+
+
+function Get-AppServers([string]$deliveryGroup, [string]$adminServer) {
     if($adminServer) {
         Invoke-Command -ComputerName $adminServer `
             -ArgumentList $deliveryGroup `
-            -ScriptBlock ${function:Get-AppServers}
+            -ScriptBlock ${function:Get-AppServersLocal}
     }
     else {
-    
-        Write-Host " " # space things out a bit
-
-        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
-
-        return Get-Brokermachine -DesktopGroupName $deliveryGroup
-        
+        Get-AppServersLocal $deliveryGroup
     }
 }
 
-function Subscribe([string]$subscription, [bool]$unsubscribe, [bool]$cacheApps, [string]$turbo, [string]$appServer, [bool]$invoke = $True) {
+function Get-AppServersLocal([string]$deliveryGroup) {
+
+    Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
+
+    return Get-Brokermachine -DesktopGroupName $deliveryGroup
     
-    if($invoke -and $appServer) {
+}
+
+
+function Subscribe([string]$subscription, [bool]$unsubscribe, [bool]$cacheApps, [string]$turbo, [string]$appServer) {
+
+    if($appServer) {
         Invoke-Command -ComputerName $appServer `
-            -ArgumentList $subscription, $unsubscribe, $cacheApps, $turbo, $appServer, $False `
-            -ScriptBlock ${function:Subscribe}
+            -ArgumentList $subscription, $unsubscribe, $cacheApps, $turbo, $appServer `
+            -ScriptBlock ${function:SubscribeLocal}
     }
     else {
-        # subscribe to the channel
-        if(-not $unsubscribe) {
-            Write-Host "`nSubscribe to $subscription on $appServer..."
-            $events = & $turbo subscribe $subscription --all-users --format=rpc | ConvertFrom-Json
-        }
-        else {
-            Write-Host "`nUnsubscribe from $subscription on $appServer..."
-            $events = & $turbo unsubscribe $subscription --all-users --format=rpc | ConvertFrom-Json
-        }
-        if($LASTEXITCODE -ne 0) {
-            $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Host $_.message }
-            return $null
-        }
-        
-        $installEvents = $events | where { $_.event -and $_.event -eq "install" }
-        $uninstallEvents = $events | where { $_.event -and $_.event -eq "uninstall" }
-        
-        # show which apps were subscribe to
-        foreach ($event in $installEvents) {
-            $name = $event.name
-            Write-Host "$name subscribed"
-        }
-        
-        foreach ($event in $uninstallEvents) {
-            $name = $event.name
-            Write-Host "$name unsubscribed"
-        }
-
-        # pre-cache apps if necessary
-        if($cacheApps) {
-            Write-Host " " # space things out a bit
-            Write-Host "Caching the subscription"
-
-            $r = & $turbo subscription update $subscription --all-users
-            if($LASTEXITCODE -ne 0) {
-                Write-Host "Error while caching the subscription"
-                $ret = $false
-            }
-        }
-        
-        # get values from installed shortcuts
-        $installedApps = @()
-        $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs"
-        $shell = New-Object -ComObject WScript.Shell
-        foreach ($event in $installEvents) {
-            $name = $event.name
-
-            # get values out of the shortcuts
-            $linkPath = "$linkDir\$name.lnk"
-            $lnk = $shell.CreateShortcut($linkPath)
-            $target = $lnk.TargetPath
-            $params = $lnk.Arguments
-            $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
-            
-            $app = new-object psobject -property @{ Name = $name; Target = $target; Params = $params; Icon = $icon; Server = $appServer }
-            $installedApps += ,$app
-        }
-        
-        $uninstalledApps = $uninstallEvents | Select-Object -Property Name
-        
-        # return object with subscription events
-        return new-object psobject -property @{InstalledApps = $installedApps; UninstalledApps = $uninstallEvents}
+        SubscribeLocal $subscription $unsubscribe $cacheApps $turbo $appServer
     }
+    
 }
 
-function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$adminServer = "") {
+function SubscribeLocal([string]$subscription, [bool]$unsubscribe, [bool]$cacheApps, [string]$turbo, [string]$appServer) {
+    
+    # subscribe to the channel
+    if(-not $unsubscribe) {
+        Write-Host "`nSubscribe to $subscription on $appServer..."
+        $events = & $turbo subscribe $subscription --all-users --format=rpc | ConvertFrom-Json
+    }
+    else {
+        Write-Host "`nUnsubscribe from $subscription on $appServer..."
+        $events = & $turbo unsubscribe $subscription --all-users --format=rpc | ConvertFrom-Json
+    }
+    if($LASTEXITCODE -ne 0) {
+        $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Host $_.message }
+        return $null
+    }
+    
+    $installEvents = $events | where { $_.event -and $_.event -eq "install" }
+    $uninstallEvents = $events | where { $_.event -and $_.event -eq "uninstall" }
+    
+    # show which apps were subscribe to
+    foreach ($event in $installEvents) {
+        $name = $event.name
+        Write-Host "$name subscribed"
+    }
+    
+    foreach ($event in $uninstallEvents) {
+        $name = $event.name
+        Write-Host "$name unsubscribed"
+    }
 
+    # pre-cache apps if necessary
+    if($cacheApps) {
+        Write-Host " " # space things out a bit
+        Write-Host "Caching the subscription"
+
+        $r = & $turbo subscription update $subscription --all-users
+        if($LASTEXITCODE -ne 0) {
+            Write-Host "Error while caching the subscription"
+            $ret = $false
+        }
+    }
+    
+    # get values from installed shortcuts
+    $installedApps = @()
+    $linkDir = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs"
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($event in $installEvents) {
+        $name = $event.name
+
+        # get values out of the shortcuts
+        $linkPath = "$linkDir\$name.lnk"
+        $lnk = $shell.CreateShortcut($linkPath)
+        $target = $lnk.TargetPath
+        $params = $lnk.Arguments
+        $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
+        
+        $app = new-object psobject -property @{ Name = $name; Target = $target; Params = $params; Icon = $icon; Server = $appServer }
+        $installedApps += ,$app
+    }
+    
+    $uninstalledApps = $uninstallEvents | Select-Object -Property Name
+    
+    # return object with subscription events
+    return new-object psobject -property @{InstalledApps = $installedApps; UninstalledApps = $uninstallEvents}
+}
+
+
+# publish/unpublish the apps to the Citrix Virtual Apps delivery group
+function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$adminServer) {
+    
     if($adminServer) {
         Invoke-Command -ComputerName $adminServer `
             -ArgumentList $deliveryGroup, $installedApps, $uninstalledApps `
-            -ScriptBlock ${function:UpdateDeliveryGroup}
+            -ScriptBlock ${function:UpdateDeliveryGroupLocal}
     }
     else {
-                
-        # publish/unpublish the apps to the Citrix Virtual Apps server
-        Write-Host " " # space things out a bit
-
-        Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
-
-        # publish new apps
-        $ret = $true
-        foreach ($event in $installedApps) {
-        
-            # check if the app is already here
-            $name = $event.name -replace "[\\\/;:#.*?=<>\[\]()]", ""
-            $app = Get-BrokerApplication -Name $name -AdminAddress $adminServer -ErrorAction SilentlyContinue
-            if(-not $app) {
-                # store the icon
-                $ctxIcon = Get-BrokerIcon -ServerName $event.Server -FileName $event.Icon[0] -Index $event.Icon[1] -AdminAddress $adminServer
-                $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData -AdminAddress $adminServer
-
-                # add the app
-                $app = New-BrokerApplication `
-                    -Name $name `
-                    -CommandLineExecutable $event.Target `
-                    -CommandLineArguments $event.Params `
-                    -DesktopGroup $deliveryGroup `
-                    -IconUid $brokerIcon.Uid `
-                    -AdminAddress $adminServer
-
-                if($app) {
-                    Write-Host "$name published"
-                }
-                else {
-                    Write-Host "$name was not published!"
-                    $ret = $false
-                }
-            }
-        }
-        
-        # unpublish those that were removed
-        foreach ($event in $uninstalledApps) {
-        
-            $name = $event.Name -replace "[\\\/;:#.*?=<>\[\]()]", ""
-
-            $app = Get-BrokerApplication -Name $name -AdminAddress $adminServer -ErrorAction SilentlyContinue
-            if($app) {
-                Remove-BrokerApplication -InputObject $app -AdminAddress $adminServer
-                Write-Host "$name unpublished"
-            }
-        }
-
-        return $ret
+        UpdateDeliveryGroupLocal $deliveryGroup $installedApps $uninstalledApps
     }
+    
 }
+
+function UpdateDeliveryGroupLocal([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps) {
+
+    Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
+
+    # publish new apps
+    $ret = $true
+    foreach ($event in $installedApps) {
+    
+        # check if the app is already here
+        $name = $event.name -replace "[\\\/;:#.*?=<>\[\]()]", ""
+        $app = Get-BrokerApplication -Name $name -AdminAddress $adminServer -ErrorAction SilentlyContinue
+        if(-not $app) {
+            # store the icon
+            $ctxIcon = Get-BrokerIcon -ServerName $event.Server -FileName $event.Icon[0] -Index $event.Icon[1] -AdminAddress $adminServer
+            $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData -AdminAddress $adminServer
+
+            # add the app
+            $app = New-BrokerApplication `
+                -Name $name `
+                -CommandLineExecutable $event.Target `
+                -CommandLineArguments $event.Params `
+                -DesktopGroup $deliveryGroup `
+                -IconUid $brokerIcon.Uid `
+                -AdminAddress $adminServer
+
+            if($app) {
+                Write-Host "$name published"
+            }
+            else {
+                Write-Host "$name was not published!"
+                $ret = $false
+            }
+        }
+    }
+    
+    # unpublish those that were removed
+    foreach ($event in $uninstalledApps) {
+    
+        $name = $event.Name -replace "[\\\/;:#.*?=<>\[\]()]", ""
+
+        $app = Get-BrokerApplication -Name $name -AdminAddress $adminServer -ErrorAction SilentlyContinue
+        if($app) {
+            Remove-BrokerApplication -InputObject $app -AdminAddress $adminServer
+            Write-Host "$name unpublished"
+        }
+    }
+
+    return $ret
+}
+
 
 function DoWork() {
     # check if proper version
@@ -351,7 +374,7 @@ function DoWork() {
     }
 
     # get app servers in delivery group
-    Write-Host "Searching for application servers in the delivery group..."
+    Write-Host "Searching for application servers in the delivery group...`n"
     $appServers = Get-AppServers $deliveryGroup $adminServer
     if($appServers -eq $null ) {
         Write-Error "`nUnable to find application servers for the specified delivery group"
@@ -383,7 +406,7 @@ function DoWork() {
         }
     
         # publish to citrix
-        Write-Host "Publish changes to Citrix..."
+        Write-Host "Publish changes to Citrix...`n"
         if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $adminServer)) {
             Write-Error "`nDelivery group update failed"
             return -1
