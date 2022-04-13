@@ -7,6 +7,10 @@
 
 Subscribes a Citrix Virtual Apps or XenAPp server to the specified workspace/channel and adds the applications to the specified delivery group.
 
+NOTE: Caller of this script must be running as user which is a citrix administrator. 
+
+NOTE: Must be run from an elevated powershell instance.
+
 .DESCRIPTION
 
 This cmdlet will automatically download and install the Turbo client if it isn't already installed for all users. This operation will require the 
@@ -16,18 +20,22 @@ Can install the client manually by downloading from http://start.turbo.net/insta
 
 Requires Powershell 4.0+. Requires Citrix Virtual Apps 7.*.
 
+.PARAMETER domain
+
+The Turbo Server domain to log into and subscribe from.
+
 .PARAMETER channel
 
 The name of the channel to subscribe to.
 
-.PARAMETER deliveryGroup
-
-The name of the Citrix Virtual Apps delivery group to publish the applications to. If blank, no apps will be published.
-
-.PARAMETER adminServer
+.PARAMETER deliveryControllerServer
 
 The name of a Citrix Virtual Apps content delivery server. If this script is run from the content delivery server then this parameter is not required. 
 If this parameter is used then the current user must be an appropriate admin in Citirix and be a member of the Windows "Remote Management Users" group.
+
+.PARAMETER deliveryGroup
+
+The name of the Citrix Virtual Apps delivery group to publish the applications to. If blank, no apps will be published.
 
 .PARAMETER user
 
@@ -59,12 +67,14 @@ Waits for user confirmation after execution completes
 [CmdletBinding()]
 param
 (
+    [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo Server domain to log into and subscribe from")]
+    [string] $domain,
     [Parameter(Mandatory=$True,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the channel to subscribe to")]
     [string] $channel,
-    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps delivery group to publish the applications to")]
-    [string] $deliveryGroup,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps delivery controller server")]
     [string] $deliveryControllerServer,
+    [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The name of the Citrix Virtual Apps delivery group to publish the applications to")]
+    [string] $deliveryGroup,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The Turbo Server user with access to the channel")]
     [string] $user,
     [Parameter(Mandatory=$False,ValueFromPipeline=$False,ValueFromPipelineByPropertyName=$False,HelpMessage="The password for the Turbo Server user")]
@@ -146,19 +156,26 @@ function InstallTurboIfLocal() {
 }
 
 
-function LoginIf([string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server) {
+function LoginIf([string]$domain, [string]$user, [string]$password, [string]$apikey, [string]$turbo, [string]$server) {
     if($server) {
         # send off to the server to perform
         Invoke-Command -ComputerName $server `
-            -ArgumentList $user, $password, $apikey, $turbo `
+            -ArgumentList $domain, $user, $password, $apikey, $turbo `
             -ScriptBlock ${function:LoginIfLocal}
     }
     else {
-        LoginIfLocal $user $password $apikey $turbo
+        LoginIfLocal $domain $user $password $apikey $turbo
     }
 }
 
-function LoginIfLocal([string]$user, [string]$password, [string]$apikey, [string]$turbo) {
+function LoginIfLocal([string]$domain, [string]$user, [string]$password, [string]$apikey, [string]$turbo) {
+
+    # point client to the domain
+    $ret = & $turbo config --all-users --domain=$domain
+    if($LASTEXITCODE -ne 0) {
+        Write-Error "Invalid domain"
+        return $false
+    }
 
     # use the api key if we have it
     if($apikey) {
@@ -246,7 +263,7 @@ function SubscribeLocal([string]$subscription, [bool]$unsubscribe, [bool]$cacheA
         $events = & $turbo unsubscribe $subscription --all-users --format=rpc | ConvertFrom-Json
     }
     if($LASTEXITCODE -ne 0) {
-        $events | where { $_.event -and $_.event -eq "error" } | foreach { Write-Host $_.message }
+        Write-Host $events.message 
         return $null
     }
     
@@ -265,14 +282,12 @@ function SubscribeLocal([string]$subscription, [bool]$unsubscribe, [bool]$cacheA
     }
 
     # pre-cache apps if necessary
-    if($cacheApps) {
-        Write-Host " " # space things out a bit
-        Write-Host "Caching the subscription"
+    if(-not $unsubscribe -and $cacheApps) {
+        Write-Host "`nCaching the subscription"
 
         $r = & $turbo subscription update $subscription --all-users
         if($LASTEXITCODE -ne 0) {
             Write-Host "Error while caching the subscription"
-            $ret = $false
         }
     }
     
@@ -290,7 +305,7 @@ function SubscribeLocal([string]$subscription, [bool]$unsubscribe, [bool]$cacheA
         $params = $lnk.Arguments
         $icon = $lnk.IconLocation -split "," # string comes in format "path,index"
         
-        $app = new-object psobject -property @{ Name = $name; Target = $target; Params = $params; Icon = $icon; Server = $appServer }
+        $app = new-object psobject -property @{ Name = $name; Target = $target; Params = $params; Icon = $icon }
         $installedApps += ,$app
     }
     
@@ -302,33 +317,33 @@ function SubscribeLocal([string]$subscription, [bool]$unsubscribe, [bool]$cacheA
 
 
 # publish/unpublish the apps to the Citrix Virtual Apps delivery group
-function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$deliveryControllerServer) {
+function UpdateDeliveryGroup([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$deliveryControllerServer, [string]$appServer) {
     
     if($deliveryControllerServer) {
         Invoke-Command -ComputerName $deliveryControllerServer `
-            -ArgumentList $deliveryGroup, $installedApps, $uninstalledApps `
+            -ArgumentList $deliveryGroup, $installedApps, $uninstalledApps, $deliveryControllerServer, $appServer `
             -ScriptBlock ${function:UpdateDeliveryGroupLocal}
     }
     else {
-        UpdateDeliveryGroupLocal $deliveryGroup $installedApps $uninstalledApps
+        UpdateDeliveryGroupLocal $deliveryGroup $installedApps $uninstalledApps $deliveryControllerServer $appServer
     }
     
 }
 
-function UpdateDeliveryGroupLocal([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps) {
+function UpdateDeliveryGroupLocal([string]$deliveryGroup, [array]$installedApps, [array]$uninstalledApps, [string]$deliveryControllerServer, [string]$appServer) {
 
     Add-PSSnapin Citrix* -ErrorAction SilentlyContinue # may already be loaded
 
     # publish new apps
     $ret = $true
     foreach ($event in $installedApps) {
-    
+
         # check if the app is already here
         $name = $event.name -replace "[\\\/;:#.*?=<>\[\]()]", ""
         $app = Get-BrokerApplication -Name $name -AdminAddress $deliveryControllerServer -ErrorAction SilentlyContinue
         if(-not $app) {
             # store the icon
-            $ctxIcon = Get-BrokerIcon -ServerName $event.Server -FileName $event.Icon[0] -Index $event.Icon[1] -AdminAddress $deliveryControllerServer
+            $ctxIcon = Get-BrokerIcon -ServerName $appServer -FileName $event.Icon[0] -Index $event.Icon[1] -AdminAddress $deliveryControllerServer
             $brokerIcon = New-BrokerIcon -EncodedIconData $ctxIcon.EncodedIconData -AdminAddress $deliveryControllerServer
 
             # add the app
@@ -393,7 +408,7 @@ function DoWork() {
 
         # login if necessary
         Write-Host "Login to Turbo..."
-        if(-not $(LoginIf $user $password $apiKey $turbo $appServer.DNSName)) {
+        if(-not $(LoginIf $domain $user $password $apiKey $turbo $appServer.DNSName)) {
             Write-Error "Must be logged in to continue"
             return -1
         }
@@ -406,8 +421,8 @@ function DoWork() {
         }
     
         # publish to citrix
-        Write-Host "Publish changes to Citrix...`n"
-        if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $deliveryControllerServer)) {
+        Write-Host "`nPublish changes to Citrix..."
+        if(-not $(UpdateDeliveryGroup $deliveryGroup $events.InstalledApps $events.UninstalledApps $deliveryControllerServer $appServer.DNSName)) {
             Write-Error "`nDelivery group update failed"
             return -1
         }
